@@ -23,3 +23,8 @@ class TokenData(BaseModel):
 
     username: str
     role: str
+
+class RefreshRequest(BaseModel):
+    """Refresh token submitted to the refresh endpoint."""
+
+    refresh_token: str
