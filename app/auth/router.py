@@ -8,6 +8,7 @@ from app.auth.schemas import LoginRequest, RefreshRequest, TokenData, TokenRespo
 from app.auth.utils import authenticate_user
 from app.core.security import InvalidTokenError, create_access_token, create_refresh_token, verify_token
 from app.database import get_db
+from app.core.decorators import require_permission
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 bearer_scheme = HTTPBearer()
@@ -145,3 +146,9 @@ def refresh_token(refresh_request: RefreshRequest) -> TokenResponse:
         access_token=create_access_token(token_data),
         refresh_token=create_refresh_token(token_data),
     )
+
+@router.get("/transfer-test")
+@require_permission("transfers:write")
+async def transfer_test(current_user: TokenData = Depends(get_current_user)):
+    """Test endpoint for require_permission decorator."""
+    return {"message": f"Transfer permission granted for {current_user.username}"}
