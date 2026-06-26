@@ -2,9 +2,21 @@
 
 A production-grade, cloud-native payment/transfer API built with FastAPI and AWS, demonstrating modern backend engineering practices end to end.
 
+## Live Deployment
+
+**Base URL:** `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com`
+
+- Health check: `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com/health`
+- API docs: `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com/docs`
+
 ## Current Status
 
-**Week 1 complete: Auth layer built and tested. Deployment to AWS in progress.**
+**Week 1 complete: Auth layer built, tested, and deployed to AWS.**
+
+- JWT authentication with access and refresh tokens ✅
+- Role-based access control (RBAC) ✅
+- Deployed to AWS — VPC, ALB, EC2, RDS all live ✅
+- Accounts model and transfer endpoint — in progress
 
 ## Architecture Overview
 
@@ -18,6 +30,21 @@ A production-grade, cloud-native payment/transfer API built with FastAPI and AWS
 | **CI/CD** | GitHub Actions — lint, type check, test, Docker build, ECR push, deploy |
 | **Observability** | CloudWatch logs (structlog), X-Ray tracing, metric alarms |
 | **Auth** | JWT with refresh tokens, RBAC (admin/user roles) |
+
+## AWS Infrastructure
+
+```
+Internet → Internet Gateway → ALB (public subnet)
+                                    ↓
+                              EC2 / FastAPI (public subnet)
+                                    ↓
+                    RDS Postgres (private subnet, no internet access)
+```
+
+- VPC (`10.0.0.0/16`) with public and private subnets across two AZs
+- Security groups chained: internet → ALB → EC2 → RDS
+- IAM role on EC2 — no hardcoded credentials anywhere
+- ALB health checks on `/health` endpoint
 
 ## Tech Stack
 
@@ -59,12 +86,13 @@ A production-grade, cloud-native payment/transfer API built with FastAPI and AWS
 payment-api/
 ├── app/
 │   ├── auth/
-│   │   ├── router.py        # /auth routes: login, me
+│   │   ├── router.py        # /auth routes: login, me, refresh, admin-only
 │   │   ├── schemas.py       # Pydantic models for auth
 │   │   └── utils.py         # credential validation against the DB
 │   ├── core/
 │   │   ├── config.py        # Settings loaded from environment / .env
-│   │   └── security.py      # JWT issuance/verification, password hashing
+│   │   ├── security.py      # JWT issuance/verification, password hashing
+│   │   └── decorators.py    # @require_permission decorator
 │   └── database.py          # SQLAlchemy engine, session, declarative base
 ├── tests/
 ├── main.py                  # FastAPI app entry point
@@ -78,7 +106,7 @@ payment-api/
 1. Clone the repo:
 
    ```bash
-   git clone https://github.com/sahenshah/payment-api.git 
+   git clone https://github.com/sahenshah/payment-api.git
    cd payment-api
    ```
 
@@ -126,7 +154,7 @@ payment-api/
 | `SECRET_KEY` | Secret used to sign and verify JWTs | `b6f1...` (64-char hex, generate with the command above) |
 | `ALGORITHM` | JWT signing algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Access token lifetime, in minutes | `15` |
-| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token lifetime, in days | `7` |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token lifetime, in days | `1` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://payment_api:changeme@localhost:5432/payment_api` |
 
 ## API Endpoints
@@ -134,8 +162,18 @@ payment-api/
 | Method | Path | Description | Auth required |
 |---|---|---|---|
 | `POST` | `/auth/login` | Authenticate with username/password, returns an access + refresh token pair | No |
-| `GET` | `/auth/me` | Returns the identity of the currently authenticated user | Yes (bearer access token) |
-| `GET` | `/health` | Liveness check | No |
+| `POST` | `/auth/refresh` | Exchange a refresh token for a new access token | No |
+| `GET` | `/auth/me` | Returns the identity of the currently authenticated user | Yes — access token |
+| `GET` | `/auth/admin-only` | Test endpoint restricted to admin role only | Yes — admin role |
+| `GET` | `/health` | Liveness check — used by ALB health checks | No |
+
+## Key Design Decisions
+
+- **SERIALIZABLE transactions** for all balance operations — prevents race conditions under concurrent load
+- **JWT type claim** — access and refresh tokens are structurally identical but the type claim prevents refresh tokens being used on protected endpoints
+- **Chained security groups** — EC2 only accepts traffic from the ALB security group, RDS only accepts traffic from the EC2 security group. No direct internet access to either.
+- **IAM role on EC2** — temporary rotating credentials, no long-term access keys stored on the instance
+- **Decimal not Float** for all money values — Float has precision errors unacceptable in financial systems
 
 ## What's Coming Next
 
@@ -145,7 +183,7 @@ payment-api/
 - SQS-based async audit event processing with a dead letter queue
 - Terraform modules for all AWS infrastructure
 - GitHub Actions CI/CD pipeline (lint, type check, test, build, deploy)
-- Full AWS deployment (VPC, ALB, EC2, RDS, ElastiCache)
+- Structured JSON logging with structlog and CloudWatch
 
 ---
 
