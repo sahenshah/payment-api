@@ -22,7 +22,7 @@ A production-grade, cloud-native payment/transfer API built with FastAPI and AWS
 ## Tech Stack
 
 **Backend**
-- Python 3.10
+- Python 3.11+
 - FastAPI
 - Uvicorn (ASGI server)
 - Pydantic / pydantic-settings
