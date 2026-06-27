@@ -27,6 +27,12 @@ def transfer_funds(
                 detail="Account not found"
             )
         
+        if from_account.id == to_account.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot transfer to the same account"
+            )
+
         if from_account.balance < amount:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
