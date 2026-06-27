@@ -9,6 +9,9 @@ from app.models import Account
 from app.models import User
 from sqlalchemy import text
 
+from app.core.logging import get_logger
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 @router.get("/balance", response_model=AccountResponse)
@@ -62,6 +65,13 @@ def transfer(
             Account.user_id == user.id
         ).with_for_update().first()
         
+        logger.info(
+            "transfer_started",
+            from_account=account.id,
+            to_account=transfer_request.to_account_id,
+            amount=str(transfer_request.amount)
+        ) 
+        
         to_account = db.query(Account).filter(
             Account.id == transfer_request.to_account_id
         ).with_for_update().first()
@@ -83,4 +93,12 @@ def transfer(
         to_account.balance += transfer_request.amount
         
     db.refresh(account) 
+    
+    logger.info(
+        "transfer_complete",
+        from_account=account.id,
+        to_account=transfer_request.to_account_id,
+        amount=str(transfer_request.amount),
+        new_balance=str(account.balance)
+    )
     return account

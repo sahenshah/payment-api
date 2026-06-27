@@ -10,6 +10,9 @@ from app.core.security import InvalidTokenError, create_access_token, create_ref
 from app.database import get_db
 from app.core.decorators import require_permission
 
+from app.core.logging import get_logger
+logger = get_logger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 bearer_scheme = HTTPBearer()
 
@@ -81,12 +84,14 @@ def login(
     """
     user = authenticate_user(db, credentials.username, credentials.password)
     if user is None:
+        logger.warning("login_failed", username=credentials.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    logger.info("login_success", username=user.username, role=user.role)
     token_data = {"sub": user.username, "role": user.role}
     return TokenResponse(
         access_token=create_access_token(token_data),
