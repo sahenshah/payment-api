@@ -4,19 +4,25 @@ A production-grade, cloud-native payment/transfer API built with FastAPI and AWS
 
 ## Live Deployment
 
-**Base URL:** `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com`
+The API runs on AWS EC2 (eu-west-2, London) and is spun up on demand for demos and testing. The database runs on Neon PostgreSQL (free tier, always available).
 
-- Health check: `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com/health`
-- API docs: `http://payment-api-alb-311825539.eu-west-2.elb.amazonaws.com/docs`
+To request a live demo: start EC2, share the public IP.
+
+API docs: `http://EC2_PUBLIC_IP:8000/docs`
+Health check: `http://EC2_PUBLIC_IP:8000/health`
 
 ## Current Status
 
-**Week 1 complete: Auth layer built, tested, and deployed to AWS.**
+**Week 1 complete: Auth layer, database layer, transfer endpoint, structured logging, and tests all built, tested, and deployed to AWS.**
 
 - JWT authentication with access and refresh tokens ✅
 - Role-based access control (RBAC) ✅
-- Deployed to AWS — VPC, ALB, EC2, RDS all live ✅
-- Accounts model and transfer endpoint — in progress
+- Atomic transfer endpoint with SERIALIZABLE isolation ✅
+- Structured JSON logging with request ID middleware ✅
+- Unit tests (4) and integration tests (2) — 6/6 passing ✅
+- Production database migrated from RDS to Neon (free tier, zero ongoing cost) ✅
+- Zero ongoing AWS cost — EC2 stopped when not in use, RDS deleted ✅
+- Deployed to AWS — VPC, EC2 live ✅
 
 ## Architecture Overview
 
@@ -33,18 +39,20 @@ A production-grade, cloud-native payment/transfer API built with FastAPI and AWS
 
 ## AWS Infrastructure
 
-```
-Internet → Internet Gateway → ALB (public subnet)
-                                    ↓
-                              EC2 / FastAPI (public subnet)
-                                    ↓
-                    RDS Postgres (private subnet, no internet access)
-```
-
 - VPC (`10.0.0.0/16`) with public and private subnets across two AZs
-- Security groups chained: internet → ALB → EC2 → RDS
+- Security groups: EC2 accepts traffic on port 8000 and port 22 (SSH)
 - IAM role on EC2 — no hardcoded credentials anywhere
-- ALB health checks on `/health` endpoint
+- EC2 stopped when not in use — $0 ongoing cost
+- RDS deleted — replaced with Neon PostgreSQL (free tier)
+
+## Cost
+
+| Resource | Status | Monthly cost |
+|----------|--------|--------------|
+| EC2 t3.micro | Stopped when not in use | $0 (free tier) |
+| Neon PostgreSQL | Always on | $0 (free tier) |
+| VPC / networking | Always on | $0 |
+| **Total** | | **$0** |
 
 ## Tech Stack
 
@@ -57,9 +65,13 @@ Internet → Internet Gateway → ALB (public subnet)
 - passlib + bcrypt (password hashing)
 
 **Database**
-- PostgreSQL (Amazon RDS)
+- PostgreSQL
 - SQLAlchemy (ORM / data access)
 - Alembic (migrations)
+- Neon (production hosting, free tier)
+- Local PostgreSQL 14 (development)
+
+> **Note:** The production database uses Neon PostgreSQL (free tier) as this is a personal portfolio project. The codebase is database-agnostic — migrating to Amazon RDS for a production deployment requires only a `DATABASE_URL` change and running `alembic upgrade head` against the new instance.
 
 **Cache**
 - Redis (Amazon ElastiCache) — *planned*
@@ -87,15 +99,25 @@ payment-api/
 ├── app/
 │   ├── auth/
 │   │   ├── router.py        # /auth routes: login, me, refresh, admin-only
-│   │   ├── schemas.py       # Pydantic models for auth
-│   │   └── utils.py         # credential validation against the DB
+│   │   ├── schemas.py       # LoginRequest, TokenResponse, TokenData, RefreshRequest
+│   │   └── utils.py         # authenticate_user against real DB
+│   ├── accounts/
+│   │   ├── router.py        # /accounts routes: balance, transfer
+│   │   ├── schemas.py       # TransferRequest, AccountResponse
+│   │   └── service.py       # transfer_funds business logic
 │   ├── core/
-│   │   ├── config.py        # Settings loaded from environment / .env
-│   │   ├── security.py      # JWT issuance/verification, password hashing
-│   │   └── decorators.py    # @require_permission decorator
-│   └── database.py          # SQLAlchemy engine, session, declarative base
+│   │   ├── config.py        # Settings via pydantic-settings
+│   │   ├── security.py      # JWT utilities, password hashing
+│   │   ├── logging.py       # structlog JSON configuration
+│   │   ├── middleware.py    # RequestIDMiddleware
+│   │   └── decorators.py   # @require_permission decorator
+│   ├── database.py          # SQLAlchemy engines, sessions, Base
+│   └── models.py            # User and Account ORM models
+├── alembic/                 # Database migrations
 ├── tests/
-├── main.py                  # FastAPI app entry point
+│   ├── test_transfer.py          # Unit tests (4)
+│   └── test_transfer_integration.py  # Integration tests (2)
+├── main.py
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -160,12 +182,14 @@ payment-api/
 ## API Endpoints
 
 | Method | Path | Description | Auth required |
-|---|---|---|---|
-| `POST` | `/auth/login` | Authenticate with username/password, returns an access + refresh token pair | No |
-| `POST` | `/auth/refresh` | Exchange a refresh token for a new access token | No |
-| `GET` | `/auth/me` | Returns the identity of the currently authenticated user | Yes — access token |
-| `GET` | `/auth/admin-only` | Test endpoint restricted to admin role only | Yes — admin role |
-| `GET` | `/health` | Liveness check — used by ALB health checks | No |
+|--------|------|-------------|---------------|
+| `POST` | `/auth/login` | Authenticate, returns access + refresh token pair | No |
+| `POST` | `/auth/refresh` | Exchange refresh token for new access token | No |
+| `GET` | `/auth/me` | Returns current user identity | Yes — access token |
+| `GET` | `/auth/admin-only` | Admin-only test endpoint | Yes — admin role |
+| `GET` | `/accounts/balance` | Returns current user account balance | Yes — access token |
+| `POST` | `/accounts/transfer` | Atomic transfer between accounts | Yes — access token |
+| `GET` | `/health` | Liveness check | No |
 
 ## Key Design Decisions
 
@@ -174,16 +198,21 @@ payment-api/
 - **Chained security groups** — EC2 only accepts traffic from the ALB security group, RDS only accepts traffic from the EC2 security group. No direct internet access to either.
 - **IAM role on EC2** — temporary rotating credentials, no long-term access keys stored on the instance
 - **Decimal not Float** for all money values — Float has precision errors unacceptable in financial systems
+- **SERIALIZABLE isolation level** for all transfer operations — prevents phantom reads
+- **with_for_update() row-level locking** — forces concurrent transfers to queue
+- **Two SQLAlchemy engines** — standard for reads, SERIALIZABLE for transfers
+- **Service layer pattern** — transfer business logic in service.py not in router
+- **Self-transfer guard** — explicitly rejected before any DB operations
+- **Structured JSON logging** — every log line queryable, correlated by request_id
+- **Request ID middleware** — UUID per request bound to all log lines
 
 ## What's Coming Next
 
-- Accounts model (Postgres + Alembic migrations)
-- Atomic transfer endpoint using SERIALIZABLE transactions
 - Redis caching for account balance reads (cache-aside pattern)
 - SQS-based async audit event processing with a dead letter queue
 - Terraform modules for all AWS infrastructure
 - GitHub Actions CI/CD pipeline (lint, type check, test, build, deploy)
-- Structured JSON logging with structlog and CloudWatch
+- CloudWatch observability dashboard and X-Ray tracing
 
 ---
 

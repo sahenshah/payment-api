@@ -7,7 +7,7 @@ a structured learning plan to transition into modern backend engineering roles.
 
 ## Architecture
 - **API**: FastAPI (Python 3.11+)
-- **Database**: PostgreSQL (RDS) with SERIALIZABLE transactions for atomic transfers
+- **Database**: PostgreSQL — Neon (production, free tier) / local Postgres (development)
 - **Cache**: Redis (ElastiCache) — cache-aside pattern for account balance reads
 - **Queue**: SQS — async audit event processing with dead letter queue
 - **Infrastructure**: Terraform — all AWS resources defined as code, no click-ops
@@ -21,11 +21,16 @@ a structured learning plan to transition into modern backend engineering roles.
   payment-api-public-2 (10.0.2.0/24, eu-west-2b)
 - Private subnets: payment-api-private-1 (10.0.3.0/24, eu-west-2a),
   payment-api-private-2 (10.0.4.0/24, eu-west-2b)
-- Security groups chained: internet → ALB → EC2 (port 8000) → RDS (port 5432)
+- Security groups chained: internet → EC2 (port 8000, port 22) → Neon (external)
 - IAM role on EC2 (payment-api-ec2-role) — no hardcoded credentials anywhere
 - EC2 t3.micro (Amazon Linux 2023, Python 3.11) in public subnet
-- RDS db.t3.micro PostgreSQL in private subnet (no public access)
-- EC2 and RDS stopped when not in use to minimise cost
+- RDS deleted — replaced with Neon (free tier, zero cost)
+- EC2 stopped when not in use — $0 ongoing cost
+
+## Database Setup
+- **Production**: Neon PostgreSQL (free tier, always available)
+- **Development**: local PostgreSQL 14 on Ubuntu WSL
+- Migrations managed by Alembic — run against either environment
 
 ## Project Structure
 payment-api/
@@ -93,7 +98,7 @@ payment-api/
 | GET | /auth/admin-only | Yes (admin) | Admin-only test endpoint |
 | GET | /accounts/balance | Yes | Returns current user's account balance |
 | POST | /accounts/transfer | Yes | Atomic transfer with SERIALIZABLE isolation |
-| GET | /health | No | Liveness check — used by ALB health checks |
+| GET | /health | No | Liveness check |
 
 ## Current status
 Week 1 complete. All goals achieved.
@@ -101,17 +106,17 @@ Week 1 complete. All goals achieved.
 ### Completed
 - JWT authentication with access/refresh tokens, RBAC (admin/user roles)
 - require_role dependency and @require_permission decorator
-- Alembic migrations — users and accounts tables live in Postgres
-- Real database authentication against Postgres (replaced fake users)
-- GET /accounts/balance — returns current user's account balance
-- POST /accounts/transfer — atomic transfer with SERIALIZABLE isolation,
-  row-level locking (with_for_update), and self-transfer guard
-- Transfer logic extracted to service layer (app/accounts/service.py)
-- Two SQLAlchemy engines — standard and SERIALIZABLE isolation level
+- Alembic migrations — users and accounts tables
+- Real database authentication against Postgres
+- GET /accounts/balance endpoint
+- POST /accounts/transfer — SERIALIZABLE isolation, row-level locking, self-transfer guard
+- Transfer logic in service layer (app/accounts/service.py)
+- Two SQLAlchemy engines — standard and SERIALIZABLE
 - Structlog structured JSON logging with request ID middleware
 - Unit tests (4) and integration tests (2) — 6/6 passing
-- AWS infrastructure: VPC, subnets, security groups, EC2, RDS
-- Deployed and tested live on AWS via EC2 public IP
+- AWS infrastructure: VPC, subnets, security groups, EC2
+- Production database: Neon (free tier, zero ongoing cost)
+- Deployed and tested live on AWS EC2
 
 ### Week 2 goals
 - Redis caching for balance reads (cache-aside pattern)
@@ -130,9 +135,10 @@ Week 1 complete. All goals achieved.
 - **Two engines** — standard engine for reads, SERIALIZABLE engine for transfers
 - **Service layer** — transfer business logic in service.py, not in the router
 - **Self-transfer guard** — explicitly rejected with 400 before any DB operations
-- **Structured JSON logging** — every log line is queryable, correlated by request_id
-- **Request ID middleware** — UUID per request, bound to all log lines via contextvars
+- **Structured JSON logging** — every log line queryable, correlated by request_id
+- **Request ID middleware** — UUID per request bound to all log lines via contextvars
 - **IAM role on EC2** — temporary rotating credentials, no long-term access keys
+- **Neon over RDS** — free tier, zero ongoing cost, no instance management
 
 ## Code standards
 - Type hints on all functions
@@ -156,22 +162,28 @@ alembic upgrade head
 uvicorn main:app --reload
 ```
 
-## EC2 management
+## EC2 demo deployment
 ```bash
-# SSH into EC2
-ssh -i ~/.ssh/payment-api-key.pem ec2-user@YOUR_EC2_PUBLIC_IP
+# 1. Start EC2 in AWS console — get new public IP
 
-# Start app in background
+# 2. SSH in
+ssh -i ~/.ssh/payment-api-key.pem ec2-user@EC2_PUBLIC_IP
+
+# 3. Start the app
 cd payment-api
-nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
-
-# Pull latest and restart
 git pull origin main
-pkill -f uvicorn
+source venv/bin/activate
 nohup uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
 
-# Check logs
-tail -f uvicorn.log
+# 4. Test
+curl http://EC2_PUBLIC_IP:8000/health
+
+# 5. Share with employer
+# http://EC2_PUBLIC_IP:8000/docs
+
+# 6. Stop EC2 when done (AWS console)
+pkill -f uvicorn
+exit
 ```
 
 ## Environment variables
@@ -182,3 +194,12 @@ tail -f uvicorn.log
 | ACCESS_TOKEN_EXPIRE_MINUTES | Access token lifetime | 15 |
 | REFRESH_TOKEN_EXPIRE_DAYS | Refresh token lifetime | 1 |
 | DATABASE_URL | Postgres connection string | postgresql://user:pass@host:5432/db |
+
+## Cost breakdown
+| Resource | Status | Monthly cost |
+|----------|--------|--------------|
+| EC2 t3.micro | Stopped when not in use | $0 (free tier) |
+| Neon PostgreSQL | Always on | $0 (free tier) |
+| VPC / subnets / security groups | Always on | $0 |
+| RDS | Deleted | $0 |
+| **Total** | | **$0** |
