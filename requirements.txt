@@ -12,3 +12,5 @@ alembic
 structlog
 pytest
 pytest-mock
+testcontainers
+pytest-asyncio
