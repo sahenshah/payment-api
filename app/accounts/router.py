@@ -1,4 +1,5 @@
 """Account routes: balance and transfer."""
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.accounts.schemas import AccountResponse, TransferRequest
@@ -10,6 +11,7 @@ from app.models import User
 from sqlalchemy import text
 from app.accounts.service import transfer_funds
 from app.database import get_db, get_serializable_db
+from app.core.cache import get_cached_balance, set_cached_balance
 
 
 from app.core.logging import get_logger
@@ -42,7 +44,12 @@ def get_balance(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found"
         )
-    
+    cached_balance = get_cached_balance(account.id)
+    if cached_balance is not None:
+        account.balance = Decimal(cached_balance)
+        return account
+
+    set_cached_balance(account.id, str(account.balance))
     return account
 
 @router.post("/transfer", response_model=AccountResponse)

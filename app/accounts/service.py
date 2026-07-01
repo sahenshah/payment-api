@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.models import Account
+from app.core.cache import invalidate_balance
 
 def transfer_funds(
     db: Session,
@@ -43,6 +44,8 @@ def transfer_funds(
         to_account.balance += amount
         db.commit()
         db.refresh(from_account)
+        invalidate_balance(from_account_id)
+        invalidate_balance(to_account_id)
         return from_account
         
     except HTTPException:
