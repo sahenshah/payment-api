@@ -15,3 +15,4 @@ pytest-mock
 testcontainers
 pytest-asyncio
 redis
+boto3

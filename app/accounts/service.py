@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.models import Account
 from app.core.cache import invalidate_balance
+from app.core.queue import publish_audit_event
 
 def transfer_funds(
     db: Session,
@@ -44,8 +45,17 @@ def transfer_funds(
         to_account.balance += amount
         db.commit()
         db.refresh(from_account)
+        
         invalidate_balance(from_account_id)
         invalidate_balance(to_account_id)
+        
+        publish_audit_event(
+            event_type="transfer_completed",
+            from_account_id=from_account_id,
+            to_account_id=to_account_id,
+            amount=f"{amount:.2f}",
+        )
+        
         return from_account
         
     except HTTPException:

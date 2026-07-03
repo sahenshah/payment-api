@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int
     database_url: str
     redis_url: str = "redis://localhost:6379"
+    sqs_queue_url: str = ""
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
-
 
 @lru_cache
 def get_settings() -> Settings:

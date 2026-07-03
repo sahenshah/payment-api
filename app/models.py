@@ -23,3 +23,15 @@ class Account(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="accounts")
+
+class AuditEvent(Base):
+    """Audit log of all transfer events."""
+    __tablename__ = "audit_events"
+    
+    id = Column(Integer, primary_key=True)
+    event_type = Column(String, nullable=False)
+    from_account_id = Column(Integer, nullable=False)
+    to_account_id = Column(Integer, nullable=False)
+    amount = Column(String, nullable=False)
+    timestamp = Column(String, nullable=False)
+    processed_at = Column(DateTime, default=datetime.now)
