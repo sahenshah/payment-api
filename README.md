@@ -189,7 +189,7 @@ payment-api/
 | `REFRESH_TOKEN_EXPIRE_DAYS` | Refresh token lifetime, in days | `1` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://payment_api:changeme@localhost:5432/payment_api` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `SQS_QUEUE_URL ` | Amazon SQS connection string | `https://sqs.eu-west-2.amazonaws.com/YOUR_ACCOUNT_ID/payment-api-audit-queue` |
+| `SQS_QUEUE_URL` | Amazon SQS connection string | `https://sqs.eu-west-2.amazonaws.com/YOUR_ACCOUNT_ID/payment-api-audit-queue` |
 
 ## API Endpoints
 
@@ -205,25 +205,23 @@ payment-api/
 
 ## Key Design Decisions
 
-- **Infrastructure-agnostic** - the current portfolio deployment exposes FastAPI directly from EC2 to minimise costs, but can be migrated behind an Application Load Balancer without any application code changes.
-- **SERIALIZABLE transactions** for all balance operations — prevents race conditions under concurrent load
-- **JWT type claim** — access and refresh tokens are structurally identical but the type claim prevents refresh tokens being used on protected endpoints
-- **Cost-optimised, infrastructure-agnostic deployment** — the portfolio deployment exposes FastAPI directly from EC2 to minimise AWS costs. An Application Load Balancer can be introduced later for HTTPS termination, health checks, routing, and horizontal scaling without requiring application code changes.
-- **IAM role on EC2** — temporary rotating credentials, no long-term access keys stored on the instance
-- **Database portability** — application code is PostgreSQL-compatible and database-agnostic; the portfolio deployment uses Neon, while Amazon RDS can be adopted for production with only configuration changes and migrations.
-- **Decimal not Float** for all money values — Float has precision errors unacceptable in financial systems
-- **SERIALIZABLE isolation level** for all transfer operations — prevents phantom reads
-- **with_for_update() row-level locking** — forces concurrent transfers to queue
-- **Two SQLAlchemy engines** — standard for reads, SERIALIZABLE for transfers
-- **Service layer pattern** — transfer business logic in service.py not in router
-- **Self-transfer guard** — explicitly rejected before any DB operations
-- **Structured JSON logging** — every log line queryable, correlated by request_id
-- **Request ID middleware** — UUID per request bound to all log lines
-- **Cache-aside pattern** for balance reads — invalidated on both accounts on transfer
-- **SQS publish after commit** — never publish an audit event for a rolled-back transfer
-- **At-least-once delivery** handled with idempotency in the worker
-- **Dead letter queue** — prevents a bad message from blocking the queue
-- **CloudWatch** — centralises structured logs for search and alerting
+## Key Design Decisions
+
+- **Infrastructure-agnostic deployment** — FastAPI is exposed directly from EC2 to minimise portfolio costs. An ALB can be introduced for production without any application code changes, providing HTTPS termination, health checks, and horizontal scaling.
+- **Database portability** — application code is PostgreSQL-compatible and database-agnostic; the portfolio deployment uses Neon, while Amazon RDS can be adopted for production with only a DATABASE_URL change and running migrations.
+- **SERIALIZABLE isolation + with_for_update()** — prevents race conditions under concurrent load. SERIALIZABLE ensures transaction-level consistency, row-level locking forces concurrent transfers to queue rather than conflict.
+- **Two SQLAlchemy engines** — standard engine for reads, SERIALIZABLE engine for transfers only.
+- **JWT type claim** — access and refresh tokens are structurally identical but the type claim prevents refresh tokens being used on protected endpoints.
+- **IAM role on EC2** — temporary rotating credentials, no long-term access keys stored on the instance.
+- **Decimal not Float** for all money values — Float has precision errors unacceptable in financial systems.
+- **Service layer pattern** — transfer business logic in service.py not in the router.
+- **Self-transfer guard** — explicitly rejected before any DB operations.
+- **Cache-aside pattern** — balance reads check Redis first, invalidated on both accounts after every transfer.
+- **SQS publish after commit** — audit events are never published for transfers that rolled back.
+- **At-least-once delivery** handled with idempotency in the worker — duplicate messages produce no side effects.
+- **Dead letter queue** — prevents a bad message from blocking the queue after 3 failed attempts.
+- **Structured JSON logging + CloudWatch** — every log line is queryable and correlated by request_id, centralised in CloudWatch for search and alerting.
+- **Request ID middleware** — UUID per request bound to all log lines via contextvars.
 
 ## What's Coming Next
 
