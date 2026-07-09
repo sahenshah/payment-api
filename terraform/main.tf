@@ -180,3 +180,33 @@ resource "aws_instance" "main" {
     Project = "payment-api"
   }
 }
+
+# ALB Security Group (commented out — add for production deployment)
+# Uncomment and add aws_lb, aws_lb_listener, and aws_lb_target_group
+# resources to put an ALB in front of EC2.
+#
+# resource "aws_security_group" "alb" {
+#   name        = "payment-api-alb-sg"
+#   description = "ALB security group"
+#   vpc_id      = aws_vpc.main.id
+#
+#   ingress {
+#     from_port   = 80
+#     to_port     = 80
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+#
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+# }
+#
+# When adding ALB:
+# 1. Uncomment ALB security group above
+# 2. Update EC2 security group ingress port 8000 source from
+#    0.0.0.0/0 to aws_security_group.alb.id
+# 3. Add aws_lb, aws_lb_listener, aws_lb_target_group resources
