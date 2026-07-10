@@ -1,0 +1,11 @@
+venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+.git/
+terraform/
+tests/
+Dockerfile
+.dockerignore
+*.md
