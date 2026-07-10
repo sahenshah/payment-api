@@ -15,7 +15,7 @@ Health check: `http://EC2_PUBLIC_IP:8000/health`
 
 ## Current Status
 
-**Week 2 complete: Auth layer, database layer, transfer endpoint, structured logging, and tests all built, tested, and deployed to AWS.**
+**Week 3 complete: Auth layer, database layer, transfer endpoint, structured logging, tests, infrastructure as code, containerisation, CI, and observability all built, tested, and deployed to AWS.**
 
 - JWT authentication with access and refresh tokens ✅
 - Role-based access control (RBAC) ✅
@@ -28,6 +28,11 @@ Health check: `http://EC2_PUBLIC_IP:8000/health`
 - Redis cache-aside caching for balance reads, with invalidation on transfer ✅
 - SQS async audit event processing, with a worker and dead letter queue ✅
 - CloudWatch shipping structured logs from EC2 ✅
+- Terraform infrastructure as code — VPC, subnets, security groups, EC2, IAM (15 resources) ✅
+- Docker containerised deployment — 286MB image, runs locally ✅
+- GitHub Actions CI pipeline — 6/6 tests passing on every push ✅
+- CloudWatch dashboard with request rate, error rate, and transfer count widgets ✅
+- CloudWatch alarm on error rate with SNS email notification ✅
 
 ## Architecture Overview
 
@@ -38,7 +43,7 @@ Health check: `http://EC2_PUBLIC_IP:8000/health`
 | **Cache** | Redis, cache-aside pattern for account balance reads |
 | **Queue** | SQS, async audit event processing with a dead letter queue |
 | **Infrastructure** | AWS EC2, VPC, IAM, SQS and CloudWatch. Direct EC2 deployment for cost efficiency; designed to support an ALB for production deployments | 
-| **CI/CD** | GitHub Actions — lint, type check, test, Docker build, ECR push, deploy |
+| **CI/CD** | GitHub Actions — CI pipeline running (lint, test); CD planned (Docker build, ECR push, deploy) |
 | **Observability** | CloudWatch log shipping live (structlog); dashboard, X-Ray tracing, metric alarms planned |
 | **Auth** | JWT with refresh tokens, RBAC (admin/user roles) |
 
@@ -88,10 +93,13 @@ Health check: `http://EC2_PUBLIC_IP:8000/health`
 - AWS (VPC, EC2, SQS, CloudWatch, IAM)
 
 **IaC**
-- Terraform — *planned*
+- Terraform (15 resources defined)
 
 **CI/CD**
-- GitHub Actions — *planned*
+- GitHub Actions (CI pipeline running)
+
+**Containerisation**
+- Docker
 
 **Observability**
 - structlog (structured JSON logging)
@@ -127,8 +135,19 @@ payment-api/
 ├── tests/
 │   ├── test_transfer.py          # Unit tests (4)
 │   └── test_transfer_integration.py  # Integration tests (2)
+├── terraform/                # Infrastructure as code
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── provider.tf
+│   └── README.md
+├── .github/
+│   └── workflows/
+│       └── ci.yml           # Lint and test on every push
 ├── main.py
 ├── requirements.txt
+├── Dockerfile
+├── .dockerignore
 ├── .env.example
 └── README.md
 ```
@@ -205,8 +224,6 @@ payment-api/
 
 ## Key Design Decisions
 
-## Key Design Decisions
-
 - **Infrastructure-agnostic deployment** — FastAPI is exposed directly from EC2 to minimise portfolio costs. An ALB can be introduced for production without any application code changes, providing HTTPS termination, health checks, and horizontal scaling.
 - **Database portability** — application code is PostgreSQL-compatible and database-agnostic; the portfolio deployment uses Neon, while Amazon RDS can be adopted for production with only a DATABASE_URL change and running migrations.
 - **SERIALIZABLE isolation + with_for_update()** — prevents race conditions under concurrent load. SERIALIZABLE ensures transaction-level consistency, row-level locking forces concurrent transfers to queue rather than conflict.
@@ -222,13 +239,19 @@ payment-api/
 - **Dead letter queue** — prevents a bad message from blocking the queue after 3 failed attempts.
 - **Structured JSON logging + CloudWatch** — every log line is queryable and correlated by request_id, centralised in CloudWatch for search and alerting.
 - **Request ID middleware** — UUID per request bound to all log lines via contextvars.
+- **Docker layer caching** — requirements.txt copied before source code so the dependency layer is cached and only rebuilds when requirements change.
+- **GitHub Actions CI** — every push runs lint and tests automatically, so broken code never reaches main undetected.
+- **Secrets via GitHub Actions secrets** — never hardcoded in YAML.
+- **Redis service in CI** — spun up as a Docker container in the pipeline so integration tests have a real Redis available.
+- **SQS mocked in CI** — publish_audit_event patched in tests so CI has no AWS dependency.
 
 ## What's Coming Next
 
-- Terraform modules for all AWS infrastructure
-- GitHub Actions CI/CD pipeline (lint, type check, test, build, deploy)
-- Docker containerization
-- CloudWatch observability dashboard and metric alarms
+- GitHub Actions CD — Docker build, ECR push, EC2 deploy on merge to main
+- HTTPS via ALB with ACM certificate
+- AWS Secrets Manager for production secrets
+- User registration and account creation endpoints
+- Transaction history endpoint
 
 ---
 
