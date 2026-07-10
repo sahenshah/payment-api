@@ -15,15 +15,14 @@ def make_account(id: int, user_id: int, balance: str) -> Account:
     account.balance = Decimal(balance)
     return account
 
-def test_transfer_success():
+@patch('app.accounts.service.publish_audit_event')
+@patch('app.accounts.service.invalidate_balance')
+def test_transfer_success(mock_invalidate, mock_publish):
     # Arrange
     from_account = make_account(id=1, user_id=1, balance="1000.00")
     to_account = make_account(id=2, user_id=2, balance="500.00")
     
     db = MagicMock()
-    
-    # First call to db.query().filter().with_for_update().first()
-    # returns from_account, second call returns to_account
     db.query.return_value.filter.return_value.with_for_update.return_value.first.side_effect = [
         from_account,
         to_account
@@ -42,6 +41,8 @@ def test_transfer_success():
     assert to_account.balance == Decimal("600.00")
     assert result == from_account
     db.commit.assert_called_once()
+    mock_invalidate.assert_called()
+    mock_publish.assert_called_once()
 
 def test_transfer_insufficient_funds():
     # Arrange
