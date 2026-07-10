@@ -27,4 +27,11 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          REDIS_URL:
+          REDIS_URL: redis://localhost:6379
+          SQS_QUEUE_URL: ${{ secrets.SQS_QUEUE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ALGORITHM: HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES: 15
+          REFRESH_TOKEN_EXPIRE_DAYS: 1
+        run: |
+          pytest tests/ -v
