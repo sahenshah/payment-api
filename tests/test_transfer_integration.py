@@ -8,7 +8,7 @@ from app.database import Base
 from app.models import User, Account
 from app.core.security import get_password_hash
 from app.accounts.service import transfer_funds
-
+from unittest.mock import patch
 
 @pytest.fixture(scope="module")
 def db_session():
@@ -43,8 +43,8 @@ def db_session():
         
         db.close()
 
-
-def test_successful_transfer(db_session):
+@patch('app.accounts.service.publish_audit_event')
+def test_successful_transfer(mock_publish, db_session):
     """Test a real transfer between two accounts in Postgres."""
     db, account1, account2 = db_session
     
@@ -61,6 +61,7 @@ def test_successful_transfer(db_session):
     assert account1.balance == Decimal("900.00")
     assert account2.balance == Decimal("600.00")
     assert result.balance == Decimal("900.00")
+    mock_publish.assert_called_once()
 
 
 def test_insufficient_funds_integration(db_session):
