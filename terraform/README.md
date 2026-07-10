@@ -56,3 +56,15 @@ To add an ALB for production:
 2. Update the EC2 security group to only accept traffic from the ALB SG
 3. Add aws_lb, aws_lb_listener, and aws_lb_target_group resources
 4. No application code changes required — the app already listens on 0.0.0.0:8000
+
+## Switching from Neon to RDS (Production)
+
+The portfolio deployment uses Neon PostgreSQL (free tier).
+To switch to Amazon RDS for production:
+
+1. Uncomment the RDS resources in main.tf
+2. Set db_password variable: 
+   terraform apply -var="db_password=YOUR_PASSWORD"
+3. Update DATABASE_URL in your .env or Secrets Manager
+4. Run alembic upgrade head against the new RDS instance
+5. The application code requires no changes — fully database-agnostic

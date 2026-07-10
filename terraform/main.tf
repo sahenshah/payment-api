@@ -210,3 +210,56 @@ resource "aws_instance" "main" {
 # 2. Update EC2 security group ingress port 8000 source from
 #    0.0.0.0/0 to aws_security_group.alb.id
 # 3. Add aws_lb, aws_lb_listener, aws_lb_target_group resources
+
+# RDS PostgreSQL (commented out — using Neon for portfolio deployment)
+# Uncomment for production deployment
+#
+# resource "aws_db_subnet_group" "main" {
+#   name       = "payment-api-db-subnet-group"
+#   subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+#
+#   tags = {
+#     Name    = "payment-api-db-subnet-group"
+#     Project = "payment-api"
+#   }
+# }
+#
+# resource "aws_security_group" "rds" {
+#   name        = "payment-api-rds-sg"
+#   description = "RDS security group — allows traffic from EC2 only"
+#   vpc_id      = aws_vpc.main.id
+#
+#   ingress {
+#     from_port       = 5432
+#     to_port         = 5432
+#     protocol        = "tcp"
+#     security_groups = [aws_security_group.ec2.id]
+#     description     = "PostgreSQL from EC2 only"
+#   }
+#
+#   tags = {
+#     Name    = "payment-api-rds-sg"
+#     Project = "payment-api"
+#   }
+# }
+#
+# resource "aws_db_instance" "main" {
+#   identifier           = "payment-api-db"
+#   engine               = "postgres"
+#   engine_version       = "15"
+#   instance_class       = "db.t3.micro"
+#   allocated_storage    = 20
+#   storage_type         = "gp2"
+#   db_name              = "payment_api"
+#   username             = var.db_username
+#   password             = var.db_password
+#   db_subnet_group_name = aws_db_subnet_group.main.name
+#   vpc_security_group_ids = [aws_security_group.rds.id]
+#   publicly_accessible  = false
+#   skip_final_snapshot  = true
+#
+#   tags = {
+#     Name    = "payment-api-db"
+#     Project = "payment-api"
+#   }
+# }
